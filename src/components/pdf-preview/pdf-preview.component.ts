@@ -2,8 +2,12 @@ import { CommonModule } from '@angular/common';
 import { Component, Input, OnChanges, SimpleChanges } from '@angular/core';
 import { MatCardModule } from '@angular/material/card';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import { PDFDocument } from 'pdf-lib';
+import * as pdfjsLib from 'pdfjs-dist';
 
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/build/pdf.worker.mjs',
+  import.meta.url
+).toString();
 @Component({
   selector: 'app-pdf-preview',
   standalone: true,
@@ -96,25 +100,42 @@ export class PdfPreviewComponent implements OnChanges {
 
     try {
       const arrayBuffer = await this.file.arrayBuffer();
-      const pdfDoc = await PDFDocument.load(arrayBuffer);
+      const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
 
-      const pageCount = pdfDoc.getPageCount();
-      for (let i = 0; i < pageCount; i++) {
-        const newPdf = await PDFDocument.create();
-        const [page] = await newPdf.copyPages(pdfDoc, [i]);
-        newPdf.addPage(page);
-
-        console.log(pdfDoc);
-
-        // Convert to PNG for preview
-        const pngBytes = await newPdf.saveAsBase64({ dataUri: true });
-        this.pages.push(pngBytes);
+      const pagePromises = [];
+      for (let i = 1; i <= pdf.numPages; i++) {
+        pagePromises.push(this.renderPage(pdf, i));
       }
+
+      this.pages = await Promise.all(pagePromises);
     } catch (error) {
       console.error('Error loading PDF preview:', error);
       this.error = 'Failed to load PDF preview';
     } finally {
       this.isLoading = false;
     }
+  }
+
+  private async renderPage(
+    pdf: pdfjsLib.PDFDocumentProxy,
+    pageNumber: number
+  ): Promise<string> {
+    const page = await pdf.getPage(pageNumber);
+    const scale = 0.5;
+    const viewport = page.getViewport({ scale });
+
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Could not get canvas context');
+
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+
+    await page.render({
+      canvasContext: context,
+      viewport,
+    }).promise;
+
+    return canvas.toDataURL();
   }
 }
