@@ -1,34 +1,51 @@
 import { CommonModule } from '@angular/common';
 import { Component, Input, OnChanges, SimpleChanges } from '@angular/core';
+import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
+import { MatDialog, MatDialogModule } from '@angular/material/dialog';
+import { MatIconModule } from '@angular/material/icon';
+import { MatListModule } from '@angular/material/list';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import * as pdfjsLib from 'pdfjs-dist';
+import { PagePreviewDialogComponent } from './page-preview-dialog.component';
 
-pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
-  'pdfjs-dist/build/pdf.worker.mjs',
-  import.meta.url
-).toString();
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+
 @Component({
   selector: 'app-pdf-preview',
   standalone: true,
-  imports: [CommonModule, MatCardModule, MatProgressSpinnerModule],
+  imports: [
+    CommonModule,
+    MatCardModule,
+    MatProgressSpinnerModule,
+    MatListModule,
+    MatIconModule,
+    MatButtonModule,
+    MatDialogModule,
+  ],
   template: `
     <div class="preview-container">
       <div *ngIf="isLoading" class="loading-overlay">
         <mat-spinner diameter="40"></mat-spinner>
       </div>
 
-      <div class="pages-grid" *ngIf="pages.length">
-        <mat-card
+      <mat-list *ngIf="pages.length">
+        <mat-list-item
           *ngFor="let page of pages; let i = index"
-          class="page-preview"
+          class="page-item"
         >
-          <mat-card-header>
-            <mat-card-title>Page {{ i + 1 }}</mat-card-title>
-          </mat-card-header>
-          <img [src]="page" [alt]="'Page ' + (i + 1)" />
-        </mat-card>
-      </div>
+          <img
+            matListItemAvatar
+            [src]="page"
+            [alt]="'Page ' + (i + 1)"
+            class="page-thumbnail"
+          />
+          <span matListItemTitle>Page {{ i + 1 }}</span>
+          <button mat-icon-button matListItemMeta (click)="openPreview(i)">
+            <mat-icon>zoom_in</mat-icon>
+          </button>
+        </mat-list-item>
+      </mat-list>
 
       <div *ngIf="error" class="error-message">
         {{ error }}
@@ -55,19 +72,15 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
         z-index: 1;
       }
 
-      .pages-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-        gap: 16px;
-        padding: 16px;
+      .page-item {
+        border-bottom: 1px solid rgba(0, 0, 0, 0.12);
       }
 
-      .page-preview {
-        img {
-          width: 100%;
-          height: auto;
-          object-fit: contain;
-        }
+      .page-thumbnail {
+        width: 40px;
+        height: 40px;
+        object-fit: cover;
+        border-radius: 4px;
       }
 
       .error-message {
@@ -84,6 +97,8 @@ export class PdfPreviewComponent implements OnChanges {
   pages: string[] = [];
   isLoading = false;
   error: string | null = null;
+
+  constructor(private dialog: MatDialog) {}
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['file'] && this.file) {
@@ -116,12 +131,25 @@ export class PdfPreviewComponent implements OnChanges {
     }
   }
 
+  openPreview(pageIndex: number): void {
+    this.dialog.open(PagePreviewDialogComponent, {
+      data: {
+        pageUrl: this.pages[pageIndex],
+        pageNumber: pageIndex + 1,
+      },
+      maxWidth: '90vw',
+      maxHeight: '90vh',
+    });
+  }
+
   private async renderPage(
     pdf: pdfjsLib.PDFDocumentProxy,
     pageNumber: number
   ): Promise<string> {
     const page = await pdf.getPage(pageNumber);
-    const scale = 0.5;
+
+    // Smaller scale for thumbnails
+    const scale = 1;
     const viewport = page.getViewport({ scale });
 
     const canvas = document.createElement('canvas');

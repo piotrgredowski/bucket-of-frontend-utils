@@ -1,8 +1,9 @@
 import { Component } from '@angular/core';
+import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatToolbarModule } from '@angular/material/toolbar';
-import { PdfSplitterComponent } from '../components/pdf-splitter/pdf-splitter.component';
-import { PdfUploaderComponent } from '../components/pdf-uploader/pdf-uploader.component';
+import { Title } from '@angular/platform-browser';
+import { RouterLink, RouterOutlet } from '@angular/router';
 
 @Component({
   selector: 'app-root',
@@ -10,17 +11,23 @@ import { PdfUploaderComponent } from '../components/pdf-uploader/pdf-uploader.co
   imports: [
     MatToolbarModule,
     MatIconModule,
-    PdfUploaderComponent,
-    PdfSplitterComponent,
+    RouterOutlet,
+    RouterLink,
+    MatButtonModule,
   ],
   template: `
     <mat-toolbar color="primary">
-      <mat-icon>picture_as_pdf</mat-icon>
-      <span style="margin-left: 8px">PDF Tools</span>
+      <mat-icon>build</mat-icon>
+      <button mat-button style="margin-left: 8px" routerLink="/">
+        Bucket of utils
+      </button>
+      <span class="divider">|</span>
+      <span class="current-view">{{ title.getTitle() }}</span>
+      <span class="spacer"></span>
     </mat-toolbar>
 
     <main class="content">
-      <app-pdf-splitter></app-pdf-splitter>
+      <router-outlet></router-outlet>
     </main>
   `,
   styles: [
@@ -34,7 +41,22 @@ import { PdfUploaderComponent } from '../components/pdf-uploader/pdf-uploader.co
       mat-toolbar {
         margin-bottom: 16px;
       }
+
+      .spacer {
+        flex: 1 1 auto;
+      }
+
+      .divider {
+        margin: 0 8px;
+        opacity: 0.5;
+      }
+
+      .current-view {
+        opacity: 0.9;
+      }
     `,
   ],
 })
-export class AppComponent {}
+export class AppComponent {
+  constructor(public title: Title) {}
+}

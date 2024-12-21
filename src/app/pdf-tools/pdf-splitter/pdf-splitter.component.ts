@@ -1,8 +1,11 @@
 import { CommonModule } from '@angular/common';
 import { Component, OnInit } from '@angular/core';
+import { FormsModule } from '@angular/forms';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
+import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
+import { MatInputModule } from '@angular/material/input';
 import { MatProgressBarModule } from '@angular/material/progress-bar';
 import { Observable } from 'rxjs';
 import { PdfPreviewComponent } from '../pdf-preview/pdf-preview.component';
@@ -13,10 +16,13 @@ import { PdfSplitterService, PdfSplitterState } from './pdf-splitter.service';
   standalone: true,
   imports: [
     CommonModule,
+    FormsModule,
     MatButtonModule,
     MatIconModule,
     MatCardModule,
     MatProgressBarModule,
+    MatFormFieldModule,
+    MatInputModule,
     PdfPreviewComponent,
   ],
   template: `
@@ -38,6 +44,20 @@ import { PdfSplitterService, PdfSplitterState } from './pdf-splitter.service';
             mode="indeterminate"
             color="primary"
           ></mat-progress-bar>
+
+          <mat-form-field class="names-input">
+            <mat-label>New filenames (one per line)</mat-label>
+            <textarea
+              matInput
+              [(ngModel)]="newNames"
+              placeholder="Enter names (one per line)"
+              (input)="updateFileNames()"
+            ></textarea>
+            <mat-hint
+              >Each line will be used as a filename for the corresponding
+              page</mat-hint
+            >
+          </mat-form-field>
 
           <app-pdf-preview [file]="selectedFile"></app-pdf-preview>
         </div>
@@ -93,11 +113,18 @@ import { PdfSplitterService, PdfSplitterState } from './pdf-splitter.service';
         color: var(--mat-warn-500);
         padding: 8px 16px;
       }
+
+      .names-input {
+        width: 100%;
+        margin: 16px 0;
+      }
     `,
   ],
 })
 export class PdfSplitterComponent implements OnInit {
   state$: Observable<PdfSplitterState>;
+  newNames = '';
+  fileNames: string[] = [];
 
   constructor(private pdfSplitterService: PdfSplitterService) {
     this.state$ = this.pdfSplitterService.state$;
@@ -114,14 +141,18 @@ export class PdfSplitterComponent implements OnInit {
     }
   }
 
+  updateFileNames(): void {
+    this.fileNames = this.newNames
+      .split('\n')
+      .map((name) => name.trim())
+      .filter((name) => name.length > 0);
+  }
+
   async splitPdf(): Promise<void> {
     this.pdfSplitterService.setProcessing(true);
     try {
-      // TODO: Implement PDF splitting logic
-      console.log(
-        'Splitting PDF:',
-        (await this.state$.toPromise())?.selectedFile?.name
-      );
+      console.log('Splitting PDF with names:', this.fileNames);
+      // TODO: Implement PDF splitting logic with new names
     } catch (error) {
       this.pdfSplitterService.setError('Failed to split PDF');
       console.error('Error splitting PDF:', error);
