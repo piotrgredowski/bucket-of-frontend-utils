@@ -19,7 +19,7 @@ import { RouterLink } from '@angular/router';
         {{ content }}
       </mat-card-content>
       <mat-card-actions>
-        <button mat-raised-button color="primary" [routerLink]="link">
+        <button mat-raised-button color="primary" [routerLink]="link" [disabled]="disabled">
           <mat-icon>open_in_new</mat-icon>
           {{ buttonText }}
         </button>
@@ -52,4 +52,5 @@ export class ToolCardComponent {
   @Input() icon!: string;
   @Input() link!: string;
   @Input() buttonText: string = 'Open';
+  @Input() disabled: boolean = false;
 }

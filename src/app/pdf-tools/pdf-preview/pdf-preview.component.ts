@@ -9,6 +9,7 @@ import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import * as pdfjsLib from 'pdfjs-dist';
 import { PagePreviewDialogComponent } from './page-preview-dialog.component';
 
+/* @vite-ignore */
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
 
 @Component({
