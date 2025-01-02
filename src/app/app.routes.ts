@@ -1,5 +1,5 @@
-import { Routes } from '@angular/router';
 import { MainViewComponent } from './pages/main-view/main-view.component';
+import { Routes } from '@angular/router';
 
 export const routes: Routes = [
   {
@@ -12,5 +12,11 @@ export const routes: Routes = [
     loadChildren: () =>
       import('./pdf-tools/pdf-tools.module').then((m) => m.PdfToolsModule),
     title: 'PDF Tools',
+  },
+  {
+    path: 'qr-tools',
+    loadChildren: () =>
+      import('./qr-tools/qr-tools.module').then((m) => m.QrToolsModule),
+    title: 'QR Tools',
   },
 ];

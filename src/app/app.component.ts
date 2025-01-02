@@ -1,28 +1,29 @@
+import { RouterLink, RouterOutlet } from '@angular/router';
+
 import { Component } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatIconModule } from '@angular/material/icon';
 import { MatToolbarModule } from '@angular/material/toolbar';
 import { Title } from '@angular/platform-browser';
-import { RouterLink, RouterOutlet } from '@angular/router';
 
 @Component({
   selector: 'app-root',
-  standalone: true,
   imports: [
     MatToolbarModule,
     MatIconModule,
     RouterOutlet,
     RouterLink,
     MatButtonModule,
+    MatToolbarModule,
+    MatIconModule,
   ],
+  standalone: true,
   template: `
     <mat-toolbar color="primary">
-      <mat-icon>build</mat-icon>
-      <button mat-button style="margin-left: 8px" routerLink="/">
-        Bucket of utils
+      <button mat-button routerLink="/">
+        <span style="font-size: 24px">🪣</span>
       </button>
-      <span class="divider">|</span>
-      <span class="current-view">{{ title.getTitle() }}</span>
+      <span class="current-view">Bucket of utils - {{ title.getTitle() }}</span>
       <span class="spacer"></span>
     </mat-toolbar>
 

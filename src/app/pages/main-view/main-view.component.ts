@@ -1,34 +1,28 @@
 import { Component } from '@angular/core';
-import { MatButtonModule } from '@angular/material/button';
-import { MatCardModule } from '@angular/material/card';
-import { MatIconModule } from '@angular/material/icon';
-import { RouterLink } from '@angular/router';
+import { ToolCardComponent } from '../../components/tool-card/tool-card.component';
 
 @Component({
   selector: 'app-main-view',
   standalone: true,
-  imports: [MatCardModule, MatButtonModule, MatIconModule, RouterLink],
+  imports: [ToolCardComponent],
   template: `
     <div class="tools-grid">
-      <mat-card>
-        <mat-card-header>
-          <mat-icon mat-card-avatar>picture_as_pdf</mat-icon>
-          <mat-card-title>PDF Tools</mat-card-title>
-          <mat-card-subtitle
-            >Split, merge, and manipulate PDFs</mat-card-subtitle
-          >
-        </mat-card-header>
-        <mat-card-content>
-          Various tools for working with PDF files including splitting multipage
-          PDFs into single pages.
-        </mat-card-content>
-        <mat-card-actions>
-          <button mat-raised-button color="primary" routerLink="/pdf-tools">
-            <mat-icon>open_in_new</mat-icon>
-            Open PDF Tools
-          </button>
-        </mat-card-actions>
-      </mat-card>
+      <app-tool-card
+        title="PDF Tools"
+        subtitle="Split, merge, and manipulate PDFs"
+        content="Various tools for working with PDF files including splitting multipage PDFs into single pages."
+        icon="picture_as_pdf"
+        link="/pdf-tools"
+        buttonText="Open PDF Tools"
+      ></app-tool-card>
+      <app-tool-card
+        title="QR Tools"
+        subtitle="Generate and scan QR codes"
+        content="Tools for generating and scanning QR codes."
+        icon="qr_code"
+        link="/qr-tools"
+        buttonText="Open QR Tools"
+      ></app-tool-card>
     </div>
   `,
   styles: [
