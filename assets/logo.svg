@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="200" height="200" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+    <!-- Bucket -->
+    <path d="M40 70 L160 70 L150 180 L50 180 Z" 
+          fill="#ffffff" 
+          stroke="#f0f0f0" 
+          stroke-width="4"/>
+    
+    <!-- Bucket rim -->
+    <path d="M35 70 Q100 60 165 70" 
+          fill="none" 
+          stroke="#f0f0f0" 
+          stroke-width="6" 
+          stroke-linecap="round"/>
+    
+    <!-- Handle -->
+    <path d="M55 65 Q100 30 145 65" 
+          fill="none" 
+          stroke="#f0f0f0" 
+          stroke-width="6" 
+          stroke-linecap="round"/>
+
+</svg>
