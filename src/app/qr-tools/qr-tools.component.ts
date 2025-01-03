@@ -106,7 +106,7 @@ import { WifiQrCodeService } from './wifi-qr-code.service';
           width: 100%;
         }
         mat-card {
-          max-width: 480px;
+          max-width: 600px;
         }
       }
 
@@ -198,7 +198,7 @@ export class QrToolsComponent {
     if (this.qrCodeDataUrl) {
       const link = document.createElement('a');
       link.href = this.qrCodeDataUrl;
-      link.download = 'wifi-qr-code.png';
+      link.download = `${this.ssid}.png`;
       link.click();
     }
   }

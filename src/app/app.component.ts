@@ -21,7 +21,7 @@ import { Title } from '@angular/platform-browser';
   ],
   standalone: true,
   template: `
-    <mat-toolbar color="primary">
+    <mat-toolbar class="top-toolbar" color="primary">
       <button mat-button routerLink="/">
         <span style="font-size: 24px">🪣</span>
       </button>
@@ -32,16 +32,32 @@ import { Title } from '@angular/platform-browser';
     <main class="content">
       <router-outlet></router-outlet>
     </main>
+
+    <mat-toolbar class="footer" color="secondary">
+      <span><a mat-button href="https://github.com/piotrgredowski">by piotrgredowski</a></span>
+      <span><a mat-button href="https://github.com/piotrgredowski/bucket-of-frontend-utils/issues">report issues / request features here</a></span>
+    </mat-toolbar>
   `,
   styles: [
     `
-      .content {
+      $footer-height: 40px;
+
+      :host {
+        display: flex;
+        flex-direction: column;
+        min-height: 100vh;
+        position: relative;
+      }
+
+      main.content {
+        flex: 1;
         padding: 0 20px 20px 20px;
         max-width: 1200px;
         margin: 0 auto;
+        margin-bottom: $footer-height;
       }
 
-      mat-toolbar {
+      mat-toolbar.top-toolbar {
         margin-bottom: 16px;
       }
 
@@ -56,6 +72,18 @@ import { Title } from '@angular/platform-browser';
 
       .current-view {
         opacity: 0.9;
+      }
+
+      mat-toolbar.footer {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        justify-content: center;
+        text-align: left;
+        background-color: #f1f1f1;
+        z-index: 1000;
+        height: $footer-height;
       }
     `,
   ],
