@@ -470,7 +470,10 @@ export class OvertimeToolsComponent {
                 }
 
                 const employeeName = name.replace(' ', '_');
-                const filePath = `${employeeName}_${year}_${monthName}.xlsx`;
+                const monthIndexForFileName = this.months.indexOf(month) + 1;
+                const filePath = `${employeeName}_${year}_${monthIndexForFileName
+                  .toString()
+                  .padStart(2, '0')}.xlsx`;
                 workbooks.push({
                   filePath,
                   workbook: newWorkbook,
@@ -530,7 +533,6 @@ export class OvertimeToolsComponent {
         const holidayDates = holidays.map((holiday) => holiday.startDate); // Extracting only the date
         const allDaysOff = [
           ...(Array.isArray(holidayDates) ? holidayDates : []),
-          ...(Array.isArray(additionalDaysOff) ? additionalDaysOff : []),
         ];
 
         this.generateExcelFiles(parsedEmployees, years, rawMonths, allDaysOff);
