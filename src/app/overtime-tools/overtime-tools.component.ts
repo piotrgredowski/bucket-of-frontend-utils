@@ -5,6 +5,7 @@ import { FormBuilder, FormGroup, ReactiveFormsModule } from '@angular/forms'; //
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatCheckboxModule } from '@angular/material/checkbox'; // Added MatCheckboxModule
+import { MatChipsModule } from '@angular/material/chips';
 import { MatFormFieldModule } from '@angular/material/form-field';
 import { MatIconModule } from '@angular/material/icon';
 import { MatInputModule } from '@angular/material/input';
@@ -29,6 +30,7 @@ import { map } from 'rxjs/operators'; // Import operators
     ReactiveFormsModule, // Added ReactiveFormsModule
     MatCheckboxModule, // Added MatCheckboxModule
     MatProgressSpinnerModule, // Added spinner module
+    MatChipsModule, // Added for mat-chip-listbox
   ],
   template: `
     <div class="overtime-tools-container">
@@ -70,36 +72,38 @@ import { map } from 'rxjs/operators'; // Import operators
               ></textarea>
             </mat-form-field>
 
-            <h3>Months to create</h3>
-            <div style="margin-bottom: 0.5rem; display: flex; gap: 0.5rem;">
-              <button
-                mat-stroked-button
-                type="button"
-                (click)="selectAllMonths()"
+            <div class="chip-listbox-container">
+              <label class="chip-listbox-label">Months</label>
+              <mat-chip-listbox
+                [formControl]="monthsControl"
+                multiple
+                aria-label="Select months"
               >
-                Select All
-              </button>
-              <button
-                mat-stroked-button
-                type="button"
-                (click)="deselectAllMonths()"
-              >
-                Deselect All
-              </button>
-            </div>
-            <div class="months-checkboxes">
-              <mat-checkbox formControlName="january">January</mat-checkbox>
-              <mat-checkbox formControlName="february">February</mat-checkbox>
-              <mat-checkbox formControlName="march">March</mat-checkbox>
-              <mat-checkbox formControlName="april">April</mat-checkbox>
-              <mat-checkbox formControlName="may">May</mat-checkbox>
-              <mat-checkbox formControlName="june">June</mat-checkbox>
-              <mat-checkbox formControlName="july">July</mat-checkbox>
-              <mat-checkbox formControlName="august">August</mat-checkbox>
-              <mat-checkbox formControlName="september">September</mat-checkbox>
-              <mat-checkbox formControlName="october">October</mat-checkbox>
-              <mat-checkbox formControlName="november">November</mat-checkbox>
-              <mat-checkbox formControlName="december">December</mat-checkbox>
+                <mat-chip-option *ngFor="let month of months" [value]="month">
+                  {{ month.charAt(0).toUpperCase() + month.slice(1) }}
+                </mat-chip-option>
+              </mat-chip-listbox>
+              <div class="chip-actions-row">
+                <button
+                  mat-icon-button
+                  color="primary"
+                  (click)="selectAllMonths()"
+                  aria-label="Select all months"
+                  size="small"
+                >
+                  <mat-icon>select_all</mat-icon>
+                </button>
+                <button
+                  mat-icon-button
+                  color="primary"
+                  (click)="deselectAllMonths()"
+                  aria-label="Deselect all months"
+                  size="small"
+                >
+                  <mat-icon>close</mat-icon>
+                </button>
+                <span class="chip-actions-label">Select/Deselect All</span>
+              </div>
             </div>
 
             <mat-form-field appearance="fill">
@@ -176,6 +180,46 @@ import { map } from 'rxjs/operators'; // Import operators
         width: 100%; /* Make form fields take full width of their column */
       }
 
+      .chip-listbox-container {
+        width: 100%;
+        margin-bottom: 1rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+      }
+      .chip-listbox-label {
+        font-size: 0.9rem;
+        color: rgba(0, 0, 0, 0.6);
+        margin-bottom: 0.25rem;
+        margin-left: 4px;
+      }
+      .mat-chip-listbox {
+        width: 100%;
+        min-height: 56px;
+        border: 1px solid rgba(0, 0, 0, 0.23);
+        border-radius: 4px;
+        padding: 4px 8px;
+        background: #fff;
+        display: flex;
+        align-items: center;
+      }
+      .mat-chip-option {
+        margin-right: 4px;
+        margin-bottom: 2px;
+      }
+      .chip-actions-row {
+        display: flex;
+        align-items: center;
+        gap: 0.25rem;
+        margin-top: 0.25rem;
+        margin-bottom: 0.5rem;
+      }
+      .chip-actions-label {
+        font-size: 0.8rem;
+        color: rgba(0, 0, 0, 0.5);
+        margin-left: 0.5rem;
+      }
+
       @media (min-width: 1080px) {
         .overtime-tools-container {
           margin: 2rem auto;
@@ -191,7 +235,7 @@ import { map } from 'rxjs/operators'; // Import operators
 })
 export class OvertimeToolsComponent {
   overtimeForm: FormGroup;
-  months = [
+  months: string[] = [
     'january',
     'february',
     'march',
@@ -205,6 +249,7 @@ export class OvertimeToolsComponent {
     'november',
     'december',
   ];
+  monthsControl: any;
   holidays: any[] = []; // To store fetched holidays
 
   templateWorkbook: ExcelJS.Workbook | null = null; // To store the template workbook
@@ -230,23 +275,12 @@ export class OvertimeToolsComponent {
 
   constructor(private fb: FormBuilder, private http: HttpClient) {
     // Inject HttpClient
+    this.monthsControl = this.fb.control([...this.months]);
     this.overtimeForm = this.fb.group({
       employees: ['Jan Kowalski, Prezes, 1\nJoanna Senyszyn, Prezydent, 0.5'],
       additionalDaysOff: [''],
-      // Initialize months checkboxes
-      january: [true],
-      february: [true],
-      march: [true],
-      april: [true],
-      may: [true],
-      june: [true],
-      july: [true],
-      august: [true],
-      september: [true],
-      october: [true],
-      november: [true],
-      december: [true],
-      years: ['2025'], // Add years form control
+      years: ['2025'],
+      months: this.monthsControl,
     });
   }
 
@@ -392,6 +426,15 @@ export class OvertimeToolsComponent {
                     day > totalDaysInMonth ||
                     currentDate.month() !== monthIndex;
 
+                  console.log(
+                    currentDate.format('YYYY-MM-DD dd'),
+                    currentDate.month(),
+                    monthIndex,
+                    isWeekend,
+                    isHoliday,
+                    isOutOfRange
+                  );
+
                   // Calculate the column index for the day (Excel columns are letters)
                   // daysCellStartColumnIndex is 'D', so day 1 is column D, day 2 is E, etc.
                   // Calculate Excel column letter (supports columns beyond Z, e.g., AA, AB, etc.)
@@ -469,9 +512,13 @@ export class OvertimeToolsComponent {
       .split('\n')
       .map((y: string) => y.trim())
       .filter(Boolean);
-    const months = this.months.filter(
-      (month) => this.overtimeForm.get(month)?.value
+    const rawMonths: string[] = this.monthsControl.value || [];
+    const months = rawMonths.map(
+      (month: string) =>
+        this.polishMonths[month] ||
+        month.charAt(0).toUpperCase() + month.slice(1)
     );
+
     const additionalDaysOff = this.overtimeForm
       .get('additionalDaysOff')
       ?.value.split('\n')
@@ -486,7 +533,7 @@ export class OvertimeToolsComponent {
           ...(Array.isArray(additionalDaysOff) ? additionalDaysOff : []),
         ];
 
-        this.generateExcelFiles(parsedEmployees, years, months, allDaysOff);
+        this.generateExcelFiles(parsedEmployees, years, rawMonths, allDaysOff);
       },
       error: (err) => {
         this.isGenerating = false;
@@ -497,14 +544,10 @@ export class OvertimeToolsComponent {
   }
 
   selectAllMonths() {
-    this.months.forEach((month) => {
-      this.overtimeForm.get(month)?.setValue(true);
-    });
+    this.monthsControl.setValue([...this.months]);
   }
 
   deselectAllMonths() {
-    this.months.forEach((month) => {
-      this.overtimeForm.get(month)?.setValue(false);
-    });
+    this.monthsControl.setValue([]);
   }
 }
