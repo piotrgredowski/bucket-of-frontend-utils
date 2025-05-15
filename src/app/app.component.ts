@@ -34,8 +34,18 @@ import { Title } from '@angular/platform-browser';
     </main>
 
     <mat-toolbar class="footer" color="secondary">
-      <span><a mat-button href="https://github.com/piotrgredowski">by piotrgredowski</a></span>
-      <span><a mat-button href="https://github.com/piotrgredowski/bucket-of-frontend-utils/issues">report issues / request features here</a></span>
+      <span
+        ><a mat-button href="https://github.com/piotrgredowski"
+          >by piotrgredowski</a
+        ></span
+      >
+      <span
+        ><a
+          mat-button
+          href="https://github.com/piotrgredowski/bucket-of-frontend-utils/issues"
+          >report issues / request features here</a
+        ></span
+      >
     </mat-toolbar>
   `,
   styles: [
@@ -52,7 +62,7 @@ import { Title } from '@angular/platform-browser';
       main.content {
         flex: 1;
         padding: 0 20px 20px 20px;
-        max-width: 1200px;
+        max-width: 1400px;
         margin: 0 auto;
         margin-bottom: $footer-height;
       }

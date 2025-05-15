@@ -1,5 +1,5 @@
-import { MainViewComponent } from './pages/main-view/main-view.component';
 import { Routes } from '@angular/router';
+import { MainViewComponent } from './pages/main-view/main-view.component';
 
 export const routes: Routes = [
   {
@@ -18,5 +18,13 @@ export const routes: Routes = [
     loadChildren: () =>
       import('./qr-tools/qr-tools.module').then((m) => m.QrToolsModule),
     title: 'QR Tools',
+  },
+  {
+    path: 'overtime-tools',
+    loadChildren: () =>
+      import('./overtime-tools/overtime-tools.module').then(
+        (m) => m.OvertimeToolsModule
+      ),
+    title: 'Overtime Tools',
   },
 ];

@@ -25,6 +25,14 @@ import { ToolCardComponent } from '../../components/tool-card/tool-card.componen
         link="/qr-tools"
         buttonText="Open QR Tools"
       ></app-tool-card>
+      <app-tool-card
+        title="Overtime tools"
+        subtitle=""
+        content="Tool to create Excel files for overtime calculation."
+        icon="access_time"
+        link="/overtime-tools"
+        buttonText="Open Overtime Tools"
+      ></app-tool-card>
     </div>
   `,
   styles: [

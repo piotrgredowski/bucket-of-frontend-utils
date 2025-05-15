@@ -23,12 +23,15 @@
     "@angular/platform-browser": "^19.0.0",
     "@angular/platform-browser-dynamic": "^19.0.0",
     "@angular/router": "^19.0.0",
+    "dayjs": "^1.11.13",
+    "exceljs": "^4.4.0",
     "html2canvas": "^1.4.1",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^4.9.155",
     "qrcode": "^1.5.4",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0",
+    "xlsx": "^0.18.5",
     "zone.js": "~0.15.0"
   },
   "devDependencies": {
