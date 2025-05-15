@@ -26,6 +26,7 @@
     "dayjs": "^1.11.13",
     "exceljs": "^4.4.0",
     "html2canvas": "^1.4.1",
+    "jszip": "^3.10.1",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^4.9.155",
     "qrcode": "^1.5.4",
