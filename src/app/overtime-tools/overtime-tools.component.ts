@@ -533,6 +533,7 @@ export class OvertimeToolsComponent {
         const holidayDates = holidays.map((holiday) => holiday.startDate); // Extracting only the date
         const allDaysOff = [
           ...(Array.isArray(holidayDates) ? holidayDates : []),
+          ...(Array.isArray(additionalDaysOff) ? additionalDaysOff : []),
         ];
 
         this.generateExcelFiles(parsedEmployees, years, rawMonths, allDaysOff);
