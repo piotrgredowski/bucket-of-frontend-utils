@@ -428,6 +428,7 @@ export class OvertimeToolsComponent {
 
                   console.log(
                     currentDate.format('YYYY-MM-DD dd'),
+                    currentDate.day(),
                     currentDate.month(),
                     monthIndex,
                     isWeekend,
@@ -453,6 +454,9 @@ export class OvertimeToolsComponent {
                   const columnIndex = getExcelColumnLetter(
                     startColNum + (day - 1)
                   );
+                  const isSaturday = currentDate.day() === 6;
+                  const isSunday = currentDate.day() === 0;
+
                   if (isWeekend || isHoliday || isOutOfRange) {
                     for (const rowIndex of Array.from(
                       {
@@ -464,7 +468,34 @@ export class OvertimeToolsComponent {
                       const cellIndex = `${columnIndex}${rowIndex}`;
 
                       const cell = worksheet.getCell(cellIndex);
+
                       cell.value = 'X';
+
+                      if (isHoliday) {
+                        // NOTE: This is a deep copy of the cell style
+                        cell.style = JSON.parse(JSON.stringify(cell.style));
+                        cell.style.fill = {
+                          type: 'pattern',
+                          pattern: 'solid',
+                          fgColor: { argb: '5cc0ff' },
+                        };
+                      } else if (isSunday) {
+                        // NOTE: This is a deep copy of the cell style
+                        cell.style = JSON.parse(JSON.stringify(cell.style));
+                        cell.style.fill = {
+                          type: 'pattern',
+                          pattern: 'solid',
+                          fgColor: { argb: '8cf5c0' },
+                        };
+                      } else if (isSaturday) {
+                        // NOTE: This is a deep copy of the cell style
+                        cell.style = JSON.parse(JSON.stringify(cell.style));
+                        cell.style.fill = {
+                          type: 'pattern',
+                          pattern: 'solid',
+                          fgColor: { argb: 'f5c58c' },
+                        };
+                      }
                     }
                   }
                 }
