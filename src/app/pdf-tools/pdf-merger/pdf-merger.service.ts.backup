@@ -1,0 +1,1168 @@
+import { Injectable } from '@angular/core';
+import { MatDialog } from '@angular/material/dialog';
+import { PDFDocument } from 'pdf-lib';
+import { BehaviorSubject } from 'rxjs';
+import { MemoryMonitorService } from '../memory-monitor.service';
+import { PdfCompressionService } from '../pdf-compression.service';
+import { SimplePdfMergerService } from './pdf-merger-simple.service';
+import { OptimizedPdfMergerService } from './pdf-merger-optimized.service';
+import { pdfjsLib } from '../pdf-config';
+import { PagePreviewDialogComponent } from './page-preview-dialog.component';
+import {
+  PdfPasswordDialogComponent,
+  PdfPasswordDialogData,
+  PdfPasswordDialogResult,
+} from './pdf-password-dialog.component';
+
+export interface Page {
+  number: number;
+  selected: boolean;
+}
+
+export interface PdfDocument {
+  name: string;
+  file: File;
+  pageCount: number;
+  pages: Page[];
+  pdfDoc?: pdfjsLib.PDFDocumentProxy;
+  pageRange?: string;
+  selectedPageNumbers?: number[];
+}
+
+export interface PageSelection {
+  documentIndex: number;
+  documentName: string;
+  pageIndex: number;
+  pageNumber: number;
+}
+
+export interface MergeProgress {
+  current: number;
+  total: number;
+  percentage: number;
+  message: string;
+}
+
+@Injectable({
+  providedIn: 'root',
+})
+export class PdfMergerService {
+  private documentsSubject = new BehaviorSubject<PdfDocument[]>([]);
+  private selectedPagesSubject = new BehaviorSubject<PageSelection[]>([]);
+  private isProcessingSubject = new BehaviorSubject<boolean>(false);
+  private progressSubject = new BehaviorSubject<MergeProgress | null>(null);
+  private errorSubject = new BehaviorSubject<string | null>(null);
+
+  documents$ = this.documentsSubject.asObservable();
+  selectedPages$ = this.selectedPagesSubject.asObservable();
+  isProcessing$ = this.isProcessingSubject.asObservable();
+  progress$ = this.progressSubject.asObservable();
+  error$ = this.errorSubject.asObservable();
+
+  constructor(
+    private dialog: MatDialog,
+    private memoryMonitor: MemoryMonitorService,
+    private compressionService: PdfCompressionService,
+    private simpleMerger: SimplePdfMergerService,
+    private optimizedMerger: OptimizedPdfMergerService
+  ) {}
+
+  async addFiles(files: File[]): Promise<void> {
+    this.setProcessing(true);
+    this.clearError();
+
+    try {
+      const currentDocs = this.documentsSubject.value;
+      const newDocs: PdfDocument[] = [];
+
+      for (const file of files) {
+        if (file.type !== 'application/pdf') {
+          console.warn(`Skipping non-PDF file: ${file.name} (${file.type})`);
+          continue;
+        }
+
+        try {
+          const result = await this.processFile(file);
+          if (result) {
+            newDocs.push(result);
+          }
+        } catch (fileError) {
+          console.error(`Failed to process PDF file ${file.name}:`, fileError);
+          // Show user-friendly error message
+          this.setError(
+            `Failed to process ${file.name}. The file may be corrupted or too large.`
+          );
+        }
+      }
+
+      this.documentsSubject.next([...currentDocs, ...newDocs]);
+      this.updateSelectedPages();
+
+      // Check total size and warn user
+      const totalSize = [...currentDocs, ...newDocs].reduce(
+        (sum, doc) => sum + doc.file.size,
+        0
+      );
+      const totalSizeMB = Math.round(totalSize / 1024 / 1024);
+
+      if (totalSize > 100 * 1024 * 1024) {
+        // 100MB warning threshold
+        console.warn(
+          `Large files detected: ${totalSizeMB}MB total. Processing may take longer due to file size.`
+        );
+      }
+    } catch (error) {
+      this.setError('Failed to load PDF files');
+      console.error(error);
+    } finally {
+      this.setProcessing(false);
+    }
+  }
+
+  private async processFile(
+    file: File,
+    password?: string
+  ): Promise<PdfDocument | null> {
+    let arrayBuffer: ArrayBuffer | null = null;
+    try {
+      // Check file size (limit to 50MB for reliable processing)
+      const maxSize = 50 * 1024 * 1024; // 50MB
+      if (file.size > maxSize) {
+        throw new Error(
+          `File ${file.name} is too large (${Math.round(
+            file.size / 1024 / 1024
+          )}MB). Maximum size is 50MB per file.`
+        );
+      }
+
+      arrayBuffer = await file.arrayBuffer();
+      const loadingTask = pdfjsLib.getDocument({
+        data: arrayBuffer,
+        password: password,
+      });
+
+      const pdfDoc = await loadingTask.promise;
+
+      const pages: Page[] = [];
+      for (let i = 0; i < pdfDoc.numPages; i++) {
+        pages.push({
+          number: i + 1,
+          selected: true,
+        });
+      }
+
+      const result = {
+        name: file.name,
+        file,
+        pageCount: pdfDoc.numPages,
+        pages,
+        pdfDoc,
+        pageRange: `1-${pdfDoc.numPages}`,
+        selectedPageNumbers: Array.from(
+          { length: pdfDoc.numPages },
+          (_, i) => i + 1
+        ),
+      };
+
+      // Clear the ArrayBuffer immediately after processing
+      arrayBuffer = null;
+
+      return result;
+    } catch (error: any) {
+      // Handle password-protected PDFs
+      if (error.name === 'PasswordException') {
+        return await this.handlePasswordProtectedPdf(file, password);
+      }
+
+      // Handle memory errors with more specific guidance
+      if (
+        error.message?.includes('Array buffer allocation failed') ||
+        error.message?.includes('out of memory') ||
+        error.message?.includes('Maximum call stack size exceeded')
+      ) {
+        const fileSizeMB = Math.round(file.size / 1024 / 1024);
+        throw new Error(
+          `File ${file.name} (${fileSizeMB}MB) is too large to process in the browser. For reliable processing:\n\n• Try files under 25MB\n• Close other browser tabs to free memory\n• Use a desktop PDF tool for very large files`
+        );
+      }
+
+      throw error;
+    } finally {
+      // Ensure ArrayBuffer is cleared even on error
+      arrayBuffer = null;
+      // Force garbage collection if available
+      this.forceGarbageCollection();
+    }
+  }
+
+  private async handlePasswordProtectedPdf(
+    file: File,
+    previousPassword?: string
+  ): Promise<PdfDocument | null> {
+    const dialogData: PdfPasswordDialogData = {
+      fileName: file.name,
+    };
+
+    const dialogRef = this.dialog.open(PdfPasswordDialogComponent, {
+      width: '500px',
+      maxWidth: '90vw',
+      data: dialogData,
+      disableClose: true,
+    });
+
+    const result: PdfPasswordDialogResult | undefined = await dialogRef
+      .afterClosed()
+      .toPromise();
+
+    if (!result || result.skipFile) {
+      return null; // User chose to skip this file
+    }
+
+    try {
+      return await this.processFile(file, result.password);
+    } catch (error: any) {
+      if (error.name === 'PasswordException') {
+        // Wrong password, try again
+        return await this.handlePasswordProtectedPdf(file, result.password);
+      }
+      throw error;
+    }
+  }
+
+  removeDocument(index: number): void {
+    const docs = [...this.documentsSubject.value];
+    const removedDoc = docs[index];
+
+    // Clean up the removed document's resources
+    if (removedDoc?.pdfDoc) {
+      try {
+        removedDoc.pdfDoc.destroy();
+      } catch (error) {
+        console.warn('Failed to destroy PDF document:', error);
+      }
+    }
+
+    docs.splice(index, 1);
+    this.documentsSubject.next(docs);
+    this.updateSelectedPages();
+
+    // Force garbage collection after removal
+    this.forceGarbageCollection();
+  }
+
+  togglePageSelection(docIndex: number, pageIndex: number): void {
+    const docs = [...this.documentsSubject.value];
+    docs[docIndex].pages[pageIndex].selected =
+      !docs[docIndex].pages[pageIndex].selected;
+    this.documentsSubject.next(docs);
+    this.updateSelectedPages();
+  }
+
+  selectAllPages(docIndex: number): void {
+    const docs = [...this.documentsSubject.value];
+    docs[docIndex].pages.forEach((page) => (page.selected = true));
+    this.documentsSubject.next(docs);
+    this.updateSelectedPages();
+  }
+
+  deselectAllPages(docIndex: number): void {
+    const docs = [...this.documentsSubject.value];
+    docs[docIndex].pages.forEach((page) => (page.selected = false));
+    this.documentsSubject.next(docs);
+    this.updateSelectedPages();
+  }
+
+  reorderPages(previousIndex: number, currentIndex: number): void {
+    const pages = [...this.selectedPagesSubject.value];
+    const [removed] = pages.splice(previousIndex, 1);
+    pages.splice(currentIndex, 0, removed);
+    this.selectedPagesSubject.next(pages);
+  }
+
+  removePageFromOrder(index: number): void {
+    const pages = [...this.selectedPagesSubject.value];
+    const removed = pages.splice(index, 1)[0];
+
+    const docs = [...this.documentsSubject.value];
+    docs[removed.documentIndex].pages[removed.pageIndex].selected = false;
+    this.documentsSubject.next(docs);
+
+    this.selectedPagesSubject.next(pages);
+  }
+
+  updateDocumentPageRange(
+    docIndex: number,
+    pageRange: string,
+    selectedPageNumbers: number[]
+  ): void {
+    const docs = [...this.documentsSubject.value];
+    docs[docIndex].pageRange = pageRange;
+    docs[docIndex].selectedPageNumbers = selectedPageNumbers;
+
+    // Update page selection based on the new range
+    docs[docIndex].pages.forEach((page, pageIndex) => {
+      page.selected = selectedPageNumbers.includes(page.number);
+    });
+
+    this.documentsSubject.next(docs);
+    this.updateSelectedPages();
+  }
+
+  private updateSelectedPages(): void {
+    const docs = this.documentsSubject.value;
+    const selectedPages: PageSelection[] = [];
+
+    docs.forEach((doc, docIndex) => {
+      doc.pages.forEach((page, pageIndex) => {
+        if (page.selected) {
+          selectedPages.push({
+            documentIndex: docIndex,
+            documentName: doc.name,
+            pageIndex,
+            pageNumber: page.number,
+          });
+        }
+      });
+    });
+
+    this.selectedPagesSubject.next(selectedPages);
+  }
+
+  async previewMerged(): Promise<void> {
+    console.log('Starting preview process...');
+    // Use simple merge approach instead of complex one
+    const mergedPdf = await this.createSimpleMergedPdf();
+    console.log(
+      'Merged PDF result:',
+      mergedPdf ? `${mergedPdf.length} bytes` : 'null'
+    );
+    if (!mergedPdf) {
+      console.error('Preview failed: merged PDF is null');
+      return;
+    }
+
+    // Debug: Save merged PDF to browser downloads for testing (disabled in production)
+    if (false) {
+      // Disabled - only enable for debugging when needed
+      const debugBlob = new Blob([mergedPdf!], { type: 'application/pdf' });
+      const debugUrl = URL.createObjectURL(debugBlob);
+      const debugLink = document.createElement('a');
+      debugLink.href = debugUrl;
+      debugLink.download = 'debug-merged.pdf';
+      debugLink.style.display = 'none';
+      document.body.appendChild(debugLink);
+      debugLink.click();
+      document.body.removeChild(debugLink);
+      URL.revokeObjectURL(debugUrl);
+      console.log('Debug: Saved merged PDF for inspection');
+    }
+
+    // Create a File object from the merged PDF bytes (same approach as individual page preview)
+    const mergedPdfBlob = new Blob([mergedPdf], { type: 'application/pdf' });
+    const mergedPdfFile = new File([mergedPdfBlob], 'merged.pdf', {
+      type: 'application/pdf',
+    });
+
+    console.log('Created merged PDF file, size:', mergedPdfFile.size);
+
+    // Load the merged PDF to get page count for navigation
+    try {
+      const arrayBuffer = await mergedPdfFile.arrayBuffer();
+      const pdfDoc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      const pageCount = pdfDoc.numPages;
+
+      console.log('Merged PDF loaded successfully, pages:', pageCount);
+
+      // Create pages array for navigation (similar to allPages in the merger)
+      const allPages = [];
+      for (let i = 1; i <= pageCount; i++) {
+        allPages.push({
+          documentIndex: 0,
+          documentName: 'merged.pdf',
+          pageNumber: i,
+          file: mergedPdfFile,
+          pdfDoc: pdfDoc,
+        });
+      }
+
+      // Use the same page preview dialog but with full navigation support
+      this.dialog.open(PagePreviewDialogComponent, {
+        data: {
+          file: mergedPdfFile,
+          pageNumber: 1,
+          documentName: 'merged.pdf',
+          pdfDoc: pdfDoc,
+          allPages: allPages,
+          currentPageIndex: 0,
+        },
+        width: '90%',
+        maxWidth: '1200px',
+        height: '90vh',
+      });
+    } catch (error) {
+      console.error('Failed to load merged PDF for preview:', error);
+      this.setError('Failed to open PDF preview');
+    }
+  }
+
+  async downloadMerged(): Promise<void> {
+    // Use simple merge approach instead of complex one
+    const mergedPdf = await this.createSimpleMergedPdf();
+    if (!mergedPdf) return;
+
+    try {
+      // For large files, use streaming approach
+      if (mergedPdf.length > 25 * 1024 * 1024) {
+        // 25MB threshold
+        await this.streamDownload(mergedPdf, 'merged.pdf');
+      } else {
+        // Standard download for smaller files
+        const blob = new Blob([mergedPdf], { type: 'application/pdf' });
+        const url = URL.createObjectURL(blob);
+
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'merged.pdf';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+
+        URL.revokeObjectURL(url);
+      }
+    } catch (error: any) {
+      console.error('Download failed:', error);
+
+      if (this.isMemoryError(error)) {
+        this.setError(
+          'Download failed due to memory limitations. Try:\n\n• Closing other browser tabs\n• Creating a smaller merged PDF (fewer pages)\n• Using a desktop PDF tool for very large files'
+        );
+      } else {
+        this.setError(
+          'Failed to download merged PDF. The file may be too large for your browser.'
+        );
+      }
+    }
+  }
+
+  private async streamDownload(
+    data: Uint8Array,
+    filename: string
+  ): Promise<void> {
+    // Use WritableStream if available (modern browsers)
+    if ('showSaveFilePicker' in window) {
+      try {
+        const fileHandle = await (window as any).showSaveFilePicker({
+          suggestedName: filename,
+          types: [
+            {
+              description: 'PDF files',
+              accept: { 'application/pdf': ['.pdf'] },
+            },
+          ],
+        });
+
+        const writable = await fileHandle.createWritable();
+
+        // Write in chunks to avoid memory issues
+        const chunkSize = 1024 * 1024; // 1MB chunks
+        for (let i = 0; i < data.length; i += chunkSize) {
+          const chunk = data.slice(i, i + chunkSize);
+          await writable.write(chunk);
+
+          // Give browser time to process
+          if (i % (chunkSize * 5) === 0) {
+            await this.delay(10);
+          }
+        }
+
+        await writable.close();
+        return;
+      } catch (error) {
+        console.warn(
+          'File System Access API failed, falling back to blob download:',
+          error
+        );
+      }
+    }
+
+    // Fallback: Create blob in chunks to reduce memory pressure
+    try {
+      const chunkSize = 10 * 1024 * 1024; // 10MB chunks
+      const chunks = [];
+
+      for (let i = 0; i < data.length; i += chunkSize) {
+        chunks.push(data.slice(i, i + chunkSize));
+
+        // Allow garbage collection between chunks
+        if (chunks.length % 3 === 0) {
+          await this.delay(50);
+          if ((window as any).gc) {
+            (window as any).gc();
+          }
+        }
+      }
+
+      const blob = new Blob(chunks, { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+
+      // Clean up
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      throw new Error(
+        'Failed to create download. The file may be too large for your browser.'
+      );
+    }
+  }
+
+  private async createMergedPdf(): Promise<Uint8Array | null> {
+    this.setProcessing(true);
+    this.clearError();
+    this.clearProgress();
+
+    try {
+      const selectedPages = this.selectedPagesSubject.value;
+      const documents = this.documentsSubject.value;
+
+      // Use the optimized merger for much smaller file sizes
+      const mergedPdfBytes = await this.optimizedMerger.createOptimizedMergedPdf(selectedPages, documents);
+
+      if (!mergedPdfBytes || mergedPdfBytes.length === 0) {
+        throw new Error('PDF generation failed - no data produced');
+      }
+
+      console.log(`Optimized merge complete: ${Math.round(mergedPdfBytes.length / 1024 / 1024)}MB`);
+      return mergedPdfBytes;
+      const isLargeMerge = totalPages > 30 || totalFileSize > 25 * 1024 * 1024; // 30 pages or 25MB
+      const isVeryLargeMerge =
+        totalPages > 100 || totalFileSize > 50 * 1024 * 1024; // 100+ pages or 50MB+
+
+      if (isVeryLargeMerge) {
+        console.warn(
+          `Very large merge detected: ${totalPages} pages, ${Math.round(
+            totalFileSize / 1024 / 1024
+          )}MB total - using optimized processing`
+        );
+      } else if (isLargeMerge) {
+        console.warn(
+          `Large merge detected: ${totalPages} pages, ${Math.round(
+            totalFileSize / 1024 / 1024
+          )}MB total`
+        );
+      }
+
+      // Suggest batch processing for extremely large merges
+      if (totalPages > 150) {
+        const suggestedBatchSize = 50;
+        const suggestedBatches = Math.ceil(totalPages / suggestedBatchSize);
+        throw new Error(
+          `PDF too large for single merge (${totalPages} pages). For optimal performance and to prevent browser hangs, please split into ${suggestedBatches} batches of ${suggestedBatchSize} pages each. This ensures stable processing without memory issues.`
+        );
+      }
+
+      // Pre-flight memory check using memory monitor
+      const memoryInfo = this.memoryMonitor.getMemoryInfo();
+      if (memoryInfo) {
+        const availableMemory =
+          memoryInfo.jsHeapSizeLimit - memoryInfo.usedJSHeapSize;
+        const estimatedMemoryNeeded =
+          totalFileSize * (isVeryLargeMerge ? 4 : 3); // More conservative for very large files
+
+        this.memoryMonitor.logMemoryUsage('Before PDF merge');
+
+        if (estimatedMemoryNeeded > availableMemory * 0.6) {
+          // Use only 60% of available memory for very large files
+          console.warn(
+            `Memory warning: Estimated ${Math.round(
+              estimatedMemoryNeeded / 1024 / 1024
+            )}MB needed, ${Math.round(
+              availableMemory / 1024 / 1024
+            )}MB available`
+          );
+
+          if (estimatedMemoryNeeded > availableMemory * 0.9) {
+            throw new Error(
+              `Insufficient memory for this operation. Estimated need: ${Math.round(
+                estimatedMemoryNeeded / 1024 / 1024
+              )}MB, Available: ${Math.round(
+                availableMemory / 1024 / 1024
+              )}MB. Try:\n\n• Processing fewer pages at once (50-75 pages max)\n• Closing other browser tabs\n• Using smaller source files`
+            );
+          }
+        }
+      }
+
+      const totalSteps = selectedPages.length + 2;
+      let currentStep = 0;
+
+      this.updateProgress(
+        currentStep,
+        totalSteps,
+        'Optimizing memory usage...'
+      );
+      await this.delay(50); // Increased delay for better yielding
+
+      // Force garbage collection if available
+      if ((window as any).gc) {
+        (window as any).gc();
+      }
+
+      const mergedPdf = await PDFDocument.create();
+      currentStep++;
+      this.updateProgress(currentStep, totalSteps, 'Processing pages...');
+
+      // Single-pass merge - NO CHUNKING to prevent bloat
+      const loadedPdfs = new Map<number, PDFDocument>();
+
+      // Trigger initial garbage collection
+      await this.forceGarbageCollection();
+
+      // Define chunking parameters based on merge size
+      const chunkSize = isVeryLargeMerge ? 3 : isLargeMerge ? 5 : 10;
+      const yieldDelay = isVeryLargeMerge ? 150 : isLargeMerge ? 100 : 50;
+
+      // Process pages in chunks to prevent browser hanging
+      for (
+        let chunkStart = 0;
+        chunkStart < selectedPages.length;
+        chunkStart += chunkSize
+      ) {
+        const chunkEnd = Math.min(chunkStart + chunkSize, selectedPages.length);
+        const chunk = selectedPages.slice(chunkStart, chunkEnd);
+
+        // Process each page in the current chunk
+        for (let i = 0; i < chunk.length; i++) {
+          const globalIndex = chunkStart + i;
+          const pageSelection = chunk[i];
+          const doc = documents[pageSelection.documentIndex];
+
+          this.updateProgress(
+            currentStep,
+            totalSteps,
+            `Processing page ${globalIndex + 1} of ${
+              selectedPages.length
+            } from ${doc.name}...`
+          );
+
+          try {
+            // Load PDF document on demand and cache it
+            let pdf = loadedPdfs.get(pageSelection.documentIndex);
+            if (!pdf) {
+              // For very large files, keep minimal cache
+              const maxCacheSize = isVeryLargeMerge ? 1 : isLargeMerge ? 1 : 2;
+
+              // Clear previous PDFs from cache if we have too many loaded
+              if (loadedPdfs.size >= maxCacheSize) {
+                // Clear all previous entries for more aggressive memory management
+                loadedPdfs.clear();
+                await this.forceGarbageCollection();
+              }
+
+              let pdfBytes: ArrayBuffer | null = await doc.file.arrayBuffer();
+              try {
+                pdf = await PDFDocument.load(pdfBytes);
+                loadedPdfs.set(pageSelection.documentIndex, pdf);
+              } finally {
+                // Clear ArrayBuffer immediately after loading PDF
+                pdfBytes = null;
+              }
+            }
+
+            // Use more efficient page copying to preserve compression
+            const [copiedPage] = await mergedPdf.copyPages(pdf, [
+              pageSelection.pageIndex,
+            ]);
+            
+            // Set page to use compressed streams and optimize resources
+            mergedPdf.addPage(copiedPage);
+
+            currentStep++;
+
+            // Short delay between pages within a chunk
+            await this.delay(20);
+          } catch (pageError: any) {
+            if (this.isMemoryError(pageError)) {
+              // Try to recover by clearing cache and aggressive GC
+              loadedPdfs.clear();
+              await this.forceGarbageCollection();
+              await this.delay(300);
+
+              try {
+                let pdfBytes: ArrayBuffer | null = await doc.file.arrayBuffer();
+                let pdf: PDFDocument | null = null;
+                try {
+                  pdf = await PDFDocument.load(pdfBytes);
+                  const [copiedPage] = await mergedPdf.copyPages(pdf, [
+                    pageSelection.pageIndex,
+                  ]);
+                  mergedPdf.addPage(copiedPage);
+                  currentStep++;
+                } finally {
+                  // Clear ArrayBuffer and PDF document immediately
+                  pdfBytes = null;
+                  pdf = null;
+                }
+              } catch (retryError: any) {
+                throw new Error(
+                  `Memory limit exceeded while processing page ${
+                    globalIndex + 1
+                  }. The file "${
+                    doc.name
+                  }" may be too complex or large for browser processing. Try reducing the number of pages in this merge.`
+                );
+              }
+            } else {
+              throw pageError;
+            }
+          }
+        }
+
+        // Yield to browser after each chunk - critical for preventing hangs
+        await this.delay(yieldDelay);
+
+        // Force garbage collection after each chunk for large merges
+        if (isLargeMerge) {
+          await this.forceGarbageCollection();
+        }
+
+        // Progress update for chunk completion
+        console.log(
+          `Completed chunk ${
+            Math.floor(chunkStart / chunkSize) + 1
+          } of ${Math.ceil(selectedPages.length / chunkSize)}`
+        );
+      }
+
+      // Clear all cached PDFs before saving
+      loadedPdfs.clear();
+      await this.forceGarbageCollection();
+      await this.delay(100);
+
+      this.updateProgress(
+        currentStep,
+        totalSteps,
+        'Optimizing and saving merged PDF...'
+      );
+
+      // Add embedded resource optimization before saving
+      try {
+        console.log('Optimizing PDF structure before save...');
+        
+        // Force compression of the document structure
+        const pdfName = mergedPdf.context.obj('MarkInfo');
+        mergedPdf.catalog.set(
+          pdfName,
+          mergedPdf.context.obj({
+            Marked: true,
+          })
+        );
+        
+        await this.delay(100);
+      } catch (optimizationError) {
+        console.warn('PDF structure optimization failed:', optimizationError);
+      }
+
+      try {
+        // Try progressive save with multiple attempts and smaller chunks
+        let mergedPdfBytes: Uint8Array | null = null;
+
+        // Aggressive compression settings to prevent massive file bloat
+        const saveOptions = isVeryLargeMerge
+          ? {
+              useObjectStreams: true,  // CRITICAL: Enable object stream compression
+              addDefaultPage: false,
+              objectsPerTick: 25,      // Conservative for memory but enables compression
+              updateFieldAppearances: false
+            }
+          : isLargeMerge
+          ? {
+              useObjectStreams: true,  // CRITICAL: Enable object stream compression
+              addDefaultPage: false,
+              objectsPerTick: 50,
+              updateFieldAppearances: false
+            }
+          : {
+              useObjectStreams: true,  // CRITICAL: Enable object stream compression
+              addDefaultPage: false,
+              objectsPerTick: 100,
+              updateFieldAppearances: false
+            };
+
+        try {
+          console.log(
+            'Attempting to save merged PDF with options:',
+            saveOptions
+          );
+
+          // For very large files, yield to browser before save operation
+          if (isVeryLargeMerge) {
+            this.updateProgress(
+              currentStep,
+              totalSteps,
+              'Preparing final PDF save - this may take a few moments...'
+            );
+            await this.delay(200);
+          }
+
+          mergedPdfBytes = await this.saveWithYielding(
+            mergedPdf,
+            saveOptions,
+            isVeryLargeMerge
+          );
+          console.log('PDF save successful, size:', mergedPdfBytes.length);
+        } catch (saveError: any) {
+          console.error('PDF save failed:', saveError);
+
+          if (this.isMemoryError(saveError)) {
+            // Single fallback attempt with minimal options
+            await this.forceGarbageCollection();
+            await this.delay(500);
+
+            try {
+              this.updateProgress(
+                currentStep,
+                totalSteps,
+                'Retrying with minimal settings...'
+              );
+
+              const minimalOptions = {
+                useObjectStreams: true,   // Keep compression even in fallback
+                compress: true,          // Always try to compress
+                subset: true,            // Subset fonts
+                objectsPerTick: 10       // Very conservative but maintain compression
+              };
+
+              mergedPdfBytes = await this.saveWithYielding(
+                mergedPdf,
+                minimalOptions,
+                true
+              );
+              console.log(
+                'Fallback save successful, size:',
+                mergedPdfBytes.length
+              );
+            } catch (fallbackError: any) {
+              throw new Error(
+                'PDF is too large for browser processing. Try splitting the merge into smaller batches (30-50 pages each) or close other browser tabs to free up memory.'
+              );
+            }
+          } else {
+            throw saveError;
+          }
+        }
+
+        // Ensure we have valid PDF bytes
+        if (!mergedPdfBytes || mergedPdfBytes.length === 0) {
+          throw new Error('PDF generation failed - no data produced');
+        }
+
+        currentStep++;
+        this.updateProgress(currentStep, totalSteps, 'Complete!');
+
+        // Quick header validation only (no memory-intensive full PDF validation)
+        const pdfHeader = new TextDecoder().decode(mergedPdfBytes.slice(0, 4));
+        if (!pdfHeader.startsWith('%PDF')) {
+          console.error('Invalid PDF header in merged document:', pdfHeader);
+          throw new Error(
+            'Generated PDF appears to be corrupted - invalid header'
+          );
+        }
+        console.log('PDF header validation successful');
+
+        // Apply post-processing compression if file is large
+        const shouldCompress = this.compressionService.shouldCompress(mergedPdfBytes.length);
+        if (shouldCompress) {
+          this.updateProgress(
+            currentStep,
+            totalSteps,
+            'Applying final compression optimization...'
+          );
+          
+          try {
+            const compressedBytes = await this.compressionService.compressPdf(mergedPdfBytes);
+            const originalSizeMB = Math.round(mergedPdfBytes.length / 1024 / 1024);
+            const compressedSizeMB = Math.round(compressedBytes.length / 1024 / 1024);
+            console.log(`Post-processing compression: ${originalSizeMB}MB → ${compressedSizeMB}MB`);
+            
+            mergedPdfBytes = compressedBytes;
+          } catch (compressionError) {
+            console.warn('Post-processing compression failed, using original:', compressionError);
+          }
+        }
+
+        await this.delay(500);
+        console.log(
+          'Final PDF ready, size:',
+          Math.round(mergedPdfBytes.length / 1024 / 1024) + 'MB'
+        );
+        return mergedPdfBytes;
+      } catch (saveError: any) {
+        if (this.isMemoryError(saveError)) {
+          throw new Error(
+            'PDF is too large for browser processing. Try one of these solutions:\n\n1. Split the PDF into smaller parts (10-15 pages each)\n2. Reduce image quality in the source PDF\n3. Use a desktop PDF tool for very large files\n\nBrowser memory limit reached during final PDF creation.'
+          );
+        }
+        throw saveError;
+      }
+    } catch (error: any) {
+      console.error('PDF merge error:', error);
+
+      // Provide more helpful error messages
+      let errorMessage = error.message || 'Failed to merge PDFs';
+
+      if (this.isMemoryError(error) || errorMessage.includes('memory')) {
+        const totalPages = this.selectedPagesSubject.value.length;
+        const totalSizeMB = Math.round(
+          this.documentsSubject.value.reduce(
+            (sum, doc) => sum + doc.file.size,
+            0
+          ) /
+            1024 /
+            1024
+        );
+
+        errorMessage = `Memory limit exceeded while merging ${totalPages} pages (${totalSizeMB}MB total).\n\nSolutions:\n• Merge fewer pages at once (try 10-15 pages)\n• Close other browser tabs to free memory\n• For files over 25MB, use a desktop PDF tool\n• Try splitting large PDFs first, then merge smaller parts`;
+      }
+
+      this.setError(errorMessage);
+      return null;
+    } finally {
+      this.setProcessing(false);
+      this.clearProgress();
+    }
+  }
+
+  private isMemoryError(error: any): boolean {
+    const memoryKeywords = [
+      'Array buffer allocation failed',
+      'out of memory',
+      'Maximum call stack size exceeded',
+      'Cannot allocate memory',
+      'memory allocation',
+      'heap out of memory',
+    ];
+
+    return (
+      memoryKeywords.some((keyword) =>
+        error.message?.toLowerCase().includes(keyword.toLowerCase())
+      ) ||
+      error.name === 'RangeError' ||
+      error.name === 'MemoryError'
+    );
+  }
+
+  private async estimateMemoryUsage(
+    selectedPages: PageSelection[],
+    documents: PdfDocument[]
+  ): Promise<number> {
+    let totalSize = 0;
+    const processedDocs = new Set<number>();
+
+    for (const page of selectedPages) {
+      if (!processedDocs.has(page.documentIndex)) {
+        const doc = documents[page.documentIndex];
+        totalSize += doc.file.size;
+        processedDocs.add(page.documentIndex);
+      }
+    }
+
+    // Estimate final size (usually 1.5-2x the input size due to processing overhead)
+    return totalSize * 2;
+  }
+
+  private setProcessing(processing: boolean): void {
+    this.isProcessingSubject.next(processing);
+  }
+
+  private updateProgress(
+    current: number,
+    total: number,
+    message: string
+  ): void {
+    const percentage = Math.round((current / total) * 100);
+    this.progressSubject.next({
+      current,
+      total,
+      percentage,
+      message,
+    });
+  }
+
+  private clearProgress(): void {
+    this.progressSubject.next(null);
+  }
+
+  private delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  private async forceGarbageCollection(): Promise<void> {
+    // Use the memory monitor service for consistent GC
+    this.memoryMonitor.forceGarbageCollection();
+
+    // Give browser more time to actually collect for large operations
+    await this.delay(50);
+
+    // Log memory usage after GC
+    this.memoryMonitor.logMemoryUsage('After GC');
+  }
+
+  /**
+   * Save PDF with yielding to prevent browser hangs
+   */
+  private async saveWithYielding(
+    pdfDocument: PDFDocument,
+    saveOptions: any,
+    isVeryLarge: boolean = false
+  ): Promise<Uint8Array> {
+    if (!isVeryLarge) {
+      // For smaller files, use regular save
+      return await pdfDocument.save(saveOptions);
+    }
+
+    // For very large files, wrap the save operation with timeout and yielding
+    return new Promise<Uint8Array>((resolve, reject) => {
+      // Set a timeout to prevent infinite hangs
+      const timeoutMs = 5 * 60 * 1000; // 5 minutes max
+      const timeoutId = setTimeout(() => {
+        reject(
+          new Error(
+            'PDF save operation timed out after 5 minutes. The file may be too large for browser processing. Try reducing the number of pages or use a desktop PDF tool.'
+          )
+        );
+      }, timeoutMs);
+
+      // Perform the save operation
+      pdfDocument
+        .save(saveOptions)
+        .then((result) => {
+          clearTimeout(timeoutId);
+          resolve(result);
+        })
+        .catch((error) => {
+          clearTimeout(timeoutId);
+          reject(error);
+        });
+
+      // Clean up interval when operation completes
+      setTimeout(() => {
+        // Interval cleanup is handled by timeout
+      }, timeoutMs);
+    });
+  }
+
+  private setError(error: string | null): void {
+    this.errorSubject.next(error);
+  }
+
+  private clearError(): void {
+    this.errorSubject.next(null);
+  }
+
+  getCurrentDocuments(): PdfDocument[] {
+    return this.documentsSubject.value;
+  }
+
+  movePageToPosition(fromIndex: number, toIndex: number): void {
+    const pages = [...this.selectedPagesSubject.value];
+
+    if (
+      fromIndex < 0 ||
+      fromIndex >= pages.length ||
+      toIndex < 0 ||
+      toIndex >= pages.length
+    ) {
+      console.error('Invalid move indices:', {
+        fromIndex,
+        toIndex,
+        total: pages.length,
+      });
+      return;
+    }
+
+    if (fromIndex === toIndex) {
+      return; // No move needed
+    }
+
+    // Remove the page from its current position
+    const [movedPage] = pages.splice(fromIndex, 1);
+
+    // Insert it at the new position
+    pages.splice(toIndex, 0, movedPage);
+
+    this.selectedPagesSubject.next(pages);
+  }
+
+  /**
+   * Simple PDF merge without chunking to prevent massive file bloat
+   */
+  private async createSimpleMergedPdf(): Promise<Uint8Array | null> {
+    this.setProcessing(true);
+    this.clearError();
+    this.clearProgress();
+
+    try {
+      const selectedPages = this.selectedPagesSubject.value;
+      const documents = this.documentsSubject.value;
+
+      console.log('Using simplified merge approach to prevent file bloat...');
+
+      // Use the simple merger service
+      const mergedPdfBytes = await this.simpleMerger.createMergedPdfSimple(
+        selectedPages,
+        documents,
+        (current, total, message) => {
+          this.updateProgress(current, total, message);
+        }
+      );
+
+      if (!mergedPdfBytes || mergedPdfBytes.length === 0) {
+        throw new Error('PDF generation failed - no data produced');
+      }
+
+      console.log(`Simple merge complete: ${Math.round(mergedPdfBytes.length / 1024 / 1024)}MB`);
+      return mergedPdfBytes;
+
+    } catch (error: any) {
+      console.error('PDF merge error:', error);
+      this.setError(error.message || 'Failed to merge PDFs');
+      return null;
+    } finally {
+      this.setProcessing(false);
+      this.clearProgress();
+    }
+  }
+
+  /**
+   * Clean up all resources and clear memory
+   */
+  clearAllResources(): void {
+    const docs = this.documentsSubject.value;
+
+    // Clean up all PDF documents
+    docs.forEach((doc) => {
+      if (doc.pdfDoc) {
+        try {
+          doc.pdfDoc.destroy();
+        } catch (error) {
+          console.warn('Failed to destroy PDF document:', error);
+        }
+      }
+    });
+
+    // Clear all state
+    this.documentsSubject.next([]);
+    this.selectedPagesSubject.next([]);
+    this.clearError();
+    this.clearProgress();
+
+    // Force garbage collection
+    this.forceGarbageCollection();
+  }
+}

@@ -137,7 +137,12 @@ export class PdfSplitterComponent implements OnInit {
   onFileSelected(event: Event): void {
     const input = event.target as HTMLInputElement;
     if (input.files?.length) {
-      this.pdfSplitterService.setSelectedFile(input.files[0]);
+      const file = input.files[0];
+      if (file.type !== 'application/pdf') {
+        this.pdfSplitterService.setError(`Please select a PDF file. Selected file type: ${file.type}`);
+        return;
+      }
+      this.pdfSplitterService.setSelectedFile(file);
     }
   }
 

@@ -1,16 +1,13 @@
 import { CommonModule } from '@angular/common';
-import { Component, Input, OnChanges, SimpleChanges } from '@angular/core';
+import { Component, Input, OnChanges, OnDestroy, SimpleChanges } from '@angular/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatCardModule } from '@angular/material/card';
 import { MatDialog, MatDialogModule } from '@angular/material/dialog';
 import { MatIconModule } from '@angular/material/icon';
 import { MatListModule } from '@angular/material/list';
 import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
-import * as pdfjsLib from 'pdfjs-dist';
+import { pdfjsLib } from '../pdf-config';
 import { PagePreviewDialogComponent } from './page-preview-dialog.component';
-
-/* @vite-ignore */
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
 
 @Component({
   selector: 'app-pdf-preview',
@@ -92,7 +89,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dis
     `,
   ],
 })
-export class PdfPreviewComponent implements OnChanges {
+export class PdfPreviewComponent implements OnChanges, OnDestroy {
   @Input() file: File | null = null;
 
   pages: string[] = [];
@@ -100,6 +97,22 @@ export class PdfPreviewComponent implements OnChanges {
   error: string | null = null;
 
   constructor(private dialog: MatDialog) {}
+
+  ngOnDestroy(): void {
+    // Clean up canvas data URLs to free memory
+    this.pages.forEach(pageUrl => {
+      if (pageUrl.startsWith('data:')) {
+        // Canvas data URLs hold references to ArrayBuffers
+        // Clear the array to help garbage collection
+        try {
+          URL.revokeObjectURL(pageUrl);
+        } catch (error) {
+          // Data URLs can't be revoked, but we clear the array anyway
+        }
+      }
+    });
+    this.pages = [];
+  }
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['file'] && this.file) {
@@ -114,9 +127,15 @@ export class PdfPreviewComponent implements OnChanges {
     this.error = null;
     this.pages = [];
 
+    let arrayBuffer: ArrayBuffer | null = null;
+    let pdf: pdfjsLib.PDFDocumentProxy | null = null;
+
     try {
-      const arrayBuffer = await this.file.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+      arrayBuffer = await this.file.arrayBuffer();
+      pdf = await pdfjsLib.getDocument(arrayBuffer).promise;
+
+      // Clear ArrayBuffer immediately after loading
+      arrayBuffer = null;
 
       const pagePromises = [];
       for (let i = 1; i <= pdf.numPages; i++) {
@@ -128,6 +147,16 @@ export class PdfPreviewComponent implements OnChanges {
       console.error('Error loading PDF preview:', error);
       this.error = 'Failed to load PDF preview';
     } finally {
+      // Clean up resources
+      arrayBuffer = null;
+      if (pdf) {
+        try {
+          pdf.destroy();
+        } catch (cleanupError) {
+          console.warn('Failed to destroy PDF:', cleanupError);
+        }
+      }
+      pdf = null;
       this.isLoading = false;
     }
   }
@@ -147,24 +176,52 @@ export class PdfPreviewComponent implements OnChanges {
     pdf: pdfjsLib.PDFDocumentProxy,
     pageNumber: number
   ): Promise<string> {
-    const page = await pdf.getPage(pageNumber);
+    let page: pdfjsLib.PDFPageProxy | null = null;
+    let canvas: HTMLCanvasElement | null = null;
+    
+    try {
+      page = await pdf.getPage(pageNumber);
 
-    // Smaller scale for thumbnails
-    const scale = 1;
-    const viewport = page.getViewport({ scale });
+      // Much smaller scale for thumbnails to reduce memory usage
+      const scale = 0.5; // Reduced from 1 to 0.5
+      const viewport = page.getViewport({ scale });
 
-    const canvas = document.createElement('canvas');
-    const context = canvas.getContext('2d');
-    if (!context) throw new Error('Could not get canvas context');
+      canvas = document.createElement('canvas');
+      const context = canvas.getContext('2d');
+      if (!context) throw new Error('Could not get canvas context');
 
-    canvas.width = viewport.width;
-    canvas.height = viewport.height;
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
 
-    await page.render({
-      canvasContext: context,
-      viewport,
-    }).promise;
+      await page.render({
+        canvasContext: context,
+        viewport,
+      }).promise;
 
-    return canvas.toDataURL();
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.7); // Use JPEG with compression
+      
+      return dataUrl;
+    } finally {
+      // Clean up page resources
+      if (page) {
+        try {
+          page.cleanup();
+        } catch (error) {
+          console.warn('Failed to cleanup page:', error);
+        }
+        page = null;
+      }
+      
+      // Clear canvas
+      if (canvas) {
+        const context = canvas.getContext('2d');
+        if (context) {
+          context.clearRect(0, 0, canvas.width, canvas.height);
+        }
+        canvas.width = 0;
+        canvas.height = 0;
+        canvas = null;
+      }
+    }
   }
 }
