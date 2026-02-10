@@ -275,11 +275,11 @@ export class OvertimeToolsComponent {
 
   constructor(private fb: FormBuilder, private http: HttpClient) {
     // Inject HttpClient
-    this.monthsControl = this.fb.control([...this.months]);
+    this.monthsControl = this.fb.control([]);
     this.overtimeForm = this.fb.group({
       employees: ['Jan Kowalski, Prezes, 1\nJoanna Senyszyn, Prezydent, 0.5'],
       additionalDaysOff: [''],
-      years: ['2025'],
+      years: ['2026'],
       months: this.monthsControl,
     });
   }
