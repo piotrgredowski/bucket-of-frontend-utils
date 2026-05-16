@@ -87,6 +87,31 @@ import { RouterLink } from '@angular/router';
             </button>
           </mat-card-actions>
         </mat-card>
+
+        <mat-card class="tool-card" [routerLink]="'/customer-splitter'">
+          <mat-card-header>
+            <div mat-card-avatar class="tool-avatar splitter-avatar">
+              <mat-icon>table_view</mat-icon>
+            </div>
+            <mat-card-title>Customer Excel Splitter</mat-card-title>
+            <mat-card-subtitle>Split customer workbooks</mat-card-subtitle>
+          </mat-card-header>
+          <mat-card-content>
+            <p>Create separate Excel files for every customer from PR0N and ZX29 sheets, grouped by SG folders in a ZIP archive.</p>
+            <ul class="features-list">
+              <li>Browser-only Excel processing</li>
+              <li>PR0N and ZX29 sheet split</li>
+              <li>Customer names from customer sheets</li>
+              <li>ZIP output grouped by SG</li>
+            </ul>
+          </mat-card-content>
+          <mat-card-actions>
+            <button mat-raised-button color="primary">
+              <mat-icon>open_in_new</mat-icon>
+              Open Splitter
+            </button>
+          </mat-card-actions>
+        </mat-card>
       </div>
     </div>
   `,
@@ -143,6 +168,11 @@ import { RouterLink } from '@angular/router';
 
       .overtime-avatar {
         background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        color: white;
+      }
+
+      .splitter-avatar {
+        background: linear-gradient(135deg, #16a085 0%, #f4d03f 100%);
         color: white;
       }
 

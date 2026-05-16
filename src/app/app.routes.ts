@@ -27,4 +27,12 @@ export const routes: Routes = [
       ),
     title: 'Overtime Tools',
   },
+  {
+    path: 'customer-splitter',
+    loadChildren: () =>
+      import('./customer-splitter/customer-splitter.module').then(
+        (m) => m.CustomerSplitterModule
+      ),
+    title: 'Customer Excel Splitter',
+  },
 ];
