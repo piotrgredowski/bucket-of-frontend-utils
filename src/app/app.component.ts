@@ -379,6 +379,8 @@ export class AppComponent {
       'Tools for working with PDF files including merging multiple PDFs and splitting multipage PDFs. All processing happens in your browser - no data is uploaded to servers. Works offline once loaded.',
     'PDF Merger':
       'Upload multiple PDF files and combine them into a single document. You can select specific pages and arrange them in any order. All processing happens locally in your browser.',
+    'PDF Compressor':
+      'Reduce image-heavy PDF files in your browser. Files stay on your device and are never uploaded to a server.',
     'QR Tools':
       'Generate QR codes for WiFi connections, URLs, and text content',
     'Overtime Tools':

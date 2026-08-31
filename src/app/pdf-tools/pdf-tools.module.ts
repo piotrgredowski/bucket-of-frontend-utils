@@ -5,6 +5,7 @@ import { PdfSplitterComponent } from './pdf-splitter/pdf-splitter.component';
 import { PdfMergerComponent } from './pdf-merger/pdf-merger.component';
 import { PdfToolsComponent } from './pdf-tools.component';
 import { RouterModule } from '@angular/router';
+import { PdfCompressorComponent } from './pdf-compressor/pdf-compressor.component';
 
 @NgModule({
   imports: [
@@ -15,7 +16,8 @@ import { RouterModule } from '@angular/router';
         component: PdfToolsComponent,
         children: [
           { path: 'merger', component: PdfMergerComponent, title: 'PDF Merger' },
-          { path: 'splitter', component: PdfSplitterComponent, title: 'PDF Splitter' }
+          { path: 'splitter', component: PdfSplitterComponent, title: 'PDF Splitter' },
+          { path: 'compressor', component: PdfCompressorComponent, title: 'PDF Compressor' }
         ]
       }
     ]),
@@ -23,6 +25,7 @@ import { RouterModule } from '@angular/router';
     PdfSplitterComponent,
     PdfMergerComponent,
     PdfToolsComponent,
+    PdfCompressorComponent,
   ],
 })
 export class PdfToolsModule {}

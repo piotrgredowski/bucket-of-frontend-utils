@@ -26,6 +26,7 @@ import { RouterLink } from '@angular/router';
             <ul class="features-list">
               <li>Merge multiple PDF files</li>
               <li>Split PDFs into pages</li>
+              <li>Compress image-heavy PDFs locally</li>
               <li>Select specific page ranges</li>
               <li>Drag & drop page reordering</li>
             </ul>

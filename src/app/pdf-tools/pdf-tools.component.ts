@@ -93,6 +93,38 @@ import { filter, Subject, takeUntil } from 'rxjs';
               </button>
             </mat-card-actions>
           </mat-card>
+
+          <mat-card class="tool-card" (click)="selectTool('compressor')">
+            <mat-card-header>
+              <div mat-card-avatar class="tool-avatar compressor-avatar">
+                <mat-icon>compress</mat-icon>
+              </div>
+              <mat-card-title>PDF Compressor</mat-card-title>
+              <mat-card-subtitle>Reduce PDF size locally</mat-card-subtitle>
+            </mat-card-header>
+            <mat-card-content>
+              <p>
+                Reduce the size of image-heavy PDFs directly in your browser.
+                Your file never leaves your device.
+              </p>
+              <ul class="features-list">
+                <li>100% browser-based processing</li>
+                <li>Choose quality and DPI</li>
+                <li>Optional maximum file size</li>
+                <li>Download the optimized PDF</li>
+              </ul>
+            </mat-card-content>
+            <mat-card-actions>
+              <button
+                mat-raised-button
+                color="primary"
+                (click)="selectTool('compressor'); $event.stopPropagation()"
+              >
+                <mat-icon>compress</mat-icon>
+                Start Compressing
+              </button>
+            </mat-card-actions>
+          </mat-card>
         </div>
       </div>
 
@@ -166,6 +198,11 @@ import { filter, Subject, takeUntil } from 'rxjs';
 
       .splitter-avatar {
         background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        color: white;
+      }
+
+      .compressor-avatar {
+        background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
         color: white;
       }
 
@@ -269,7 +306,7 @@ export class PdfToolsComponent implements OnInit, OnDestroy {
     this.destroy$.complete();
   }
 
-  selectTool(tool: 'merger' | 'splitter'): void {
+  selectTool(tool: 'merger' | 'splitter' | 'compressor'): void {
     this.router.navigate([tool], { relativeTo: this.route });
   }
 }
